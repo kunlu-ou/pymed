@@ -7,6 +7,8 @@ from typing import Optional
 
 from .helpers import getContent
 
+mesh_checktags = ['Humans', 'Male', 'Female', 'Pregnancy', 'Infant', 'Infant, Newborn', 'Child', 'Child, Preschool', 'Adolescent', 'Young Adult', 'Adult', 'Middle Aged', 'Aged', 'Aged, 80 and over', 'Animals', 'Mice', 'Rats', 'Cats', 'Cattle', 'Chick Embryo', 'Dogs', 'Guinea Pigs', 'Hamsters', 'Rabbits']
+
 
 class PubMedArticle(object):
     """ Data class that contains a PubMed article.
@@ -16,6 +18,7 @@ class PubMedArticle(object):
         "pubmed_id",
         "title",
         "abstract",
+        "mesh",
         "keywords",
         "journal",
         "publication_date",
@@ -47,7 +50,7 @@ class PubMedArticle(object):
                 self.__setattr__(field, kwargs.get(field, None))
 
     def _extractPubMedId(self: object, xml_element: TypeVar("Element")) -> str:
-        path = ".//ArticleId[@IdType='pubmed']"
+        path = ".//PubmedData/ArticleIdList/ArticleId[@IdType='pubmed']"
         return getContent(element=xml_element, path=path)
 
     def _extractTitle(self: object, xml_element: TypeVar("Element")) -> str:
@@ -59,6 +62,34 @@ class PubMedArticle(object):
         return [
             keyword.text for keyword in xml_element.findall(path) if keyword is not None
         ]
+
+    def _extractMeSH(self: object, xml_element: TypeVar("Element")) -> list:
+        mesh_list = []
+        for mesh_heading in xml_element.findall(".//MeshHeading"):
+            descriptor = mesh_heading.find("DescriptorName")
+            qualifiers = mesh_heading.findall("QualifierName")
+            descriptor_term = ""
+            qualifier_term = ""
+            mesh_term = ""
+            if descriptor is not None:
+                descriptor_id = descriptor.attrib['UI']
+                descriptor_term = descriptor.text
+                if descriptor_term in mesh_checktags:
+                    continue
+                if descriptor.attrib['MajorTopicYN'] == 'Y':
+                    descriptor_term += "*"
+            if len(qualifiers) == 0:
+                mesh_list.append(descriptor_term)
+            else:
+                for qualifier in qualifiers:
+                    if qualifier is not None:
+                        qualifier_id = qualifier.attrib['UI']
+                        qualifier_term = qualifier.text
+                        if qualifier.attrib['MajorTopicYN'] == 'Y':
+                            qualifier_term += "*"
+                        mesh_term = descriptor_term + "/" + qualifier_term
+                    mesh_list.append(mesh_term)
+        return mesh_list
 
     def _extractJournal(self: object, xml_element: TypeVar("Element")) -> str:
         path = ".//Journal/Title"
@@ -128,6 +159,7 @@ class PubMedArticle(object):
         # Parse the different fields of the article
         self.pubmed_id = self._extractPubMedId(xml_element)
         self.title = self._extractTitle(xml_element)
+        self.mesh = self._extractMeSH(xml_element)
         self.keywords = self._extractKeywords(xml_element)
         self.journal = self._extractJournal(xml_element)
         self.abstract = self._extractAbstract(xml_element)
